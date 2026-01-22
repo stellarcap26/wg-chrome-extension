@@ -71,13 +71,15 @@ function getPageContent() {
     meta: extractMetaData(),
     headings: extractHeadings(),
     mainContent: extractMainContent(),
-    images: extractImages(),
+    images: extractImagesDetailed(),
     links: extractLinks(),
     tables: extractTables(),
     forms: extractForms(),
     colors: extractColors(),
     fonts: extractFonts(),
     layout: analyzeLayout(),
+    animations: detectAnimations(),
+    interactiveElements: detectInteractiveElements(),
     type: 'full-page'
   };
 
@@ -517,6 +519,373 @@ function isInViewport(element) {
 }
 
 /**
+ * Extract detailed image information
+ */
+function extractImagesDetailed() {
+  const images = [];
+  const imgElements = document.querySelectorAll('img');
+
+  imgElements.forEach(img => {
+    if (isElementVisible(img) && img.src && !img.src.startsWith('data:')) {
+      const styles = window.getComputedStyle(img);
+      const rect = img.getBoundingClientRect();
+
+      images.push({
+        src: img.src,
+        alt: img.alt || '',
+        title: img.title || '',
+        width: img.naturalWidth || img.width,
+        height: img.naturalHeight || img.height,
+        displayWidth: rect.width,
+        displayHeight: rect.height,
+        aspectRatio: (img.naturalWidth && img.naturalHeight) ?
+          (img.naturalWidth / img.naturalHeight).toFixed(2) : null,
+        loading: img.loading || 'eager',
+        objectFit: styles.objectFit || 'fill',
+        position: styles.position,
+        borderRadius: styles.borderRadius,
+        boxShadow: styles.boxShadow !== 'none' ? 'has shadow' : 'no shadow',
+        opacity: styles.opacity,
+        filter: styles.filter !== 'none' ? styles.filter : 'none',
+        context: describeImageContext(img),
+        decorative: !img.alt && img.getAttribute('role') === 'presentation'
+      });
+    }
+  });
+
+  // Also check for background images
+  const elementsWithBg = document.querySelectorAll('*');
+  const backgroundImages = [];
+
+  elementsWithBg.forEach(el => {
+    if (!isElementVisible(el)) return;
+
+    const styles = window.getComputedStyle(el);
+    const bgImage = styles.backgroundImage;
+
+    if (bgImage && bgImage !== 'none' && !bgImage.includes('gradient')) {
+      const urlMatch = bgImage.match(/url\(['"]?(.*?)['"]?\)/);
+      if (urlMatch && urlMatch[1]) {
+        backgroundImages.push({
+          url: urlMatch[1],
+          element: el.tagName.toLowerCase(),
+          size: styles.backgroundSize,
+          position: styles.backgroundPosition,
+          repeat: styles.backgroundRepeat,
+          attachment: styles.backgroundAttachment
+        });
+      }
+    }
+  });
+
+  return {
+    images: images.slice(0, 50), // Limit to 50 images
+    backgroundImages: backgroundImages.slice(0, 20),
+    totalCount: images.length,
+    heroImage: findHeroImage(images)
+  };
+}
+
+/**
+ * Describe image context
+ */
+function describeImageContext(img) {
+  const parent = img.closest('figure, picture, a, div[class*="image"], div[class*="photo"]');
+
+  if (!parent) return 'standalone';
+
+  if (parent.tagName === 'A') return 'linked image';
+  if (parent.tagName === 'FIGURE') {
+    const caption = parent.querySelector('figcaption');
+    return caption ? `figure with caption: ${caption.textContent.trim().substring(0, 100)}` : 'figure';
+  }
+  if (parent.tagName === 'PICTURE') return 'responsive picture';
+
+  // Check if it's in a slider/carousel
+  if (parent.closest('[class*="slider"], [class*="carousel"], [class*="gallery"]')) {
+    return 'carousel/slider image';
+  }
+
+  // Check if it's in a hero section
+  if (parent.closest('[class*="hero"], [class*="banner"], header')) {
+    return 'hero/banner image';
+  }
+
+  return 'content image';
+}
+
+/**
+ * Find hero/main image
+ */
+function findHeroImage(images) {
+  // Look for the largest image in the top portion of the page
+  const topImages = images.filter(img => {
+    const imgElement = document.querySelector(`img[src="${img.src}"]`);
+    if (!imgElement) return false;
+    const rect = imgElement.getBoundingClientRect();
+    return rect.top < window.innerHeight;
+  });
+
+  if (topImages.length === 0) return null;
+
+  // Find largest image
+  const largest = topImages.reduce((prev, current) => {
+    const prevSize = (prev.width || 0) * (prev.height || 0);
+    const currentSize = (current.width || 0) * (current.height || 0);
+    return currentSize > prevSize ? current : prev;
+  });
+
+  return largest;
+}
+
+/**
+ * Detect animations on the page
+ */
+function detectAnimations() {
+  const animations = {
+    cssAnimations: [],
+    cssTransitions: [],
+    scrollAnimations: [],
+    hoverEffects: [],
+    summary: ''
+  };
+
+  // Check all visible elements for animations
+  const elements = document.querySelectorAll('*');
+  const checkedSelectors = new Set();
+
+  elements.forEach(el => {
+    if (!isElementVisible(el)) return;
+
+    const styles = window.getComputedStyle(el);
+    const selector = getSimpleSelector(el);
+
+    if (checkedSelectors.has(selector)) return;
+    checkedSelectors.add(selector);
+
+    // CSS Animations
+    if (styles.animationName && styles.animationName !== 'none') {
+      animations.cssAnimations.push({
+        element: selector,
+        name: styles.animationName,
+        duration: styles.animationDuration,
+        timing: styles.animationTimingFunction,
+        iterationCount: styles.animationIterationCount,
+        direction: styles.animationDirection
+      });
+    }
+
+    // CSS Transitions
+    if (styles.transitionProperty && styles.transitionProperty !== 'none' && styles.transitionProperty !== 'all') {
+      animations.cssTransitions.push({
+        element: selector,
+        properties: styles.transitionProperty,
+        duration: styles.transitionDuration,
+        timing: styles.transitionTimingFunction
+      });
+    }
+
+    // Check for scroll-triggered animations (Intersection Observer, AOS, etc.)
+    const classes = el.className.toString();
+    if (classes.match(/aos|scroll-?anim|fade-?in|slide-?in|animate-?on-?scroll/i)) {
+      animations.scrollAnimations.push({
+        element: selector,
+        classes: classes.split(' ').filter(c =>
+          c.match(/aos|scroll|fade|slide|animate/i)
+        ).join(' ')
+      });
+    }
+
+    // Detect common hover effects
+    if (el.matches('a, button, .btn, [role="button"], .card, .product')) {
+      const hasTransform = styles.transform && styles.transform !== 'none';
+      const hasTransition = styles.transitionProperty && styles.transitionProperty !== 'none';
+
+      if (hasTransition) {
+        animations.hoverEffects.push({
+          element: selector,
+          type: 'transition',
+          properties: styles.transitionProperty
+        });
+      }
+    }
+  });
+
+  // Generate summary
+  let summary = '';
+  if (animations.cssAnimations.length > 0) {
+    summary += `${animations.cssAnimations.length} CSS animations detected. `;
+  }
+  if (animations.scrollAnimations.length > 0) {
+    summary += `${animations.scrollAnimations.length} scroll-triggered animations. `;
+  }
+  if (animations.hoverEffects.length > 0) {
+    summary += `${animations.hoverEffects.length} interactive hover effects. `;
+  }
+
+  animations.summary = summary || 'Minimal animations detected';
+
+  return {
+    cssAnimations: animations.cssAnimations.slice(0, 10),
+    cssTransitions: animations.cssTransitions.slice(0, 10),
+    scrollAnimations: animations.scrollAnimations.slice(0, 10),
+    hoverEffects: animations.hoverEffects.slice(0, 10),
+    summary: animations.summary
+  };
+}
+
+/**
+ * Detect interactive elements
+ */
+function detectInteractiveElements() {
+  const interactive = {
+    carousels: [],
+    modals: [],
+    dropdowns: [],
+    accordions: [],
+    tabs: [],
+    tooltips: [],
+    videoPlayers: [],
+    summary: ''
+  };
+
+  // Detect carousels/sliders
+  const carousels = document.querySelectorAll(
+    '[class*="carousel"], [class*="slider"], [class*="swiper"], .slick-slider, .owl-carousel'
+  );
+  carousels.forEach(carousel => {
+    if (isElementVisible(carousel)) {
+      const slides = carousel.querySelectorAll('[class*="slide"], [class*="item"]');
+      interactive.carousels.push({
+        slides: slides.length,
+        autoplay: carousel.hasAttribute('data-autoplay') ||
+                 carousel.classList.toString().includes('autoplay')
+      });
+    }
+  });
+
+  // Detect modals
+  const modals = document.querySelectorAll(
+    '[class*="modal"], [role="dialog"], [class*="popup"], [class*="lightbox"]'
+  );
+  interactive.modals.push({ count: modals.length });
+
+  // Detect dropdowns
+  const dropdowns = document.querySelectorAll(
+    '[class*="dropdown"], [class*="menu"], [aria-haspopup="true"]'
+  );
+  interactive.dropdowns.push({ count: dropdowns.length });
+
+  // Detect accordions
+  const accordions = document.querySelectorAll(
+    '[class*="accordion"], details, [role="region"][aria-labelledby]'
+  );
+  interactive.accordions.push({ count: accordions.length });
+
+  // Detect tabs
+  const tabs = document.querySelectorAll('[role="tablist"], [class*="tabs"]');
+  interactive.tabs.push({ count: tabs.length });
+
+  // Detect video players
+  const videos = document.querySelectorAll('video, iframe[src*="youtube"], iframe[src*="vimeo"]');
+  interactive.videoPlayers.push({ count: videos.length });
+
+  // Generate summary
+  let summary = '';
+  if (interactive.carousels.length > 0) summary += `${interactive.carousels.length} carousel(s). `;
+  if (interactive.modals[0].count > 0) summary += `${interactive.modals[0].count} modal(s). `;
+  if (interactive.accordions[0].count > 0) summary += `${interactive.accordions[0].count} accordion(s). `;
+  if (interactive.tabs[0].count > 0) summary += `${interactive.tabs[0].count} tab group(s). `;
+  if (interactive.videoPlayers[0].count > 0) summary += `${interactive.videoPlayers[0].count} video(s). `;
+
+  interactive.summary = summary || 'Basic interactive elements';
+
+  return interactive;
+}
+
+/**
+ * Get simple selector for an element
+ */
+function getSimpleSelector(el) {
+  if (el.id) return `#${el.id}`;
+
+  const classes = el.className.toString().split(' ')
+    .filter(c => c && !c.match(/^(active|focus|hover|open)/))
+    .slice(0, 2);
+
+  if (classes.length > 0) {
+    return `${el.tagName.toLowerCase()}.${classes.join('.')}`;
+  }
+
+  return el.tagName.toLowerCase();
+}
+
+/**
+ * Extract links for multi-page crawling
+ */
+function extractNavigationLinks() {
+  const navLinks = [];
+  const seen = new Set();
+
+  // Get links from navigation
+  const navElements = document.querySelectorAll('nav, header, [role="navigation"]');
+
+  navElements.forEach(nav => {
+    const links = nav.querySelectorAll('a[href]');
+    links.forEach(link => {
+      const href = link.href;
+      const text = link.textContent.trim();
+
+      if (!seen.has(href) && href && !href.includes('#') &&
+          !href.includes('javascript:') && !href.includes('mailto:') &&
+          href.startsWith(window.location.origin)) {
+        seen.add(href);
+        navLinks.push({
+          url: href,
+          text: text,
+          importance: calculateLinkImportance(link, text)
+        });
+      }
+    });
+  });
+
+  // Sort by importance
+  navLinks.sort((a, b) => b.importance - a.importance);
+
+  return navLinks.slice(0, 10); // Return top 10 most important nav links
+}
+
+/**
+ * Calculate link importance for multi-page crawling
+ */
+function calculateLinkImportance(link, text) {
+  let score = 0;
+
+  // Prioritize certain keywords
+  const highPriorityKeywords = ['about', 'services', 'products', 'contact', 'home', 'features'];
+  const lowPriorityKeywords = ['privacy', 'terms', 'login', 'sign'];
+
+  const lowerText = text.toLowerCase();
+
+  if (highPriorityKeywords.some(k => lowerText.includes(k))) score += 10;
+  if (lowPriorityKeywords.some(k => lowerText.includes(k))) score -= 5;
+
+  // Prioritize nav links
+  if (link.closest('nav, [role="navigation"]')) score += 5;
+
+  // Prioritize header links
+  if (link.closest('header')) score += 3;
+
+  // Deprioritize footer links
+  if (link.closest('footer')) score -= 3;
+
+  // Shorter text is often more important
+  if (text.length < 15) score += 2;
+
+  return score;
+}
+
+/**
  * Clean and normalize text
  */
 function cleanText(text) {
@@ -535,14 +904,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     let result = null;
 
     switch (request.action) {
-      case 'extractSelected':
-        result = getSelectedContent();
-        break;
       case 'extractPage':
         result = getPageContent();
         break;
-      case 'extractVisible':
-        result = getVisibleContent();
+      case 'getNavigationLinks':
+        result = extractNavigationLinks();
+        break;
+      case 'captureScreenshot':
+        // Screenshot will be handled by background script
+        result = { success: true };
         break;
       default:
         result = { error: 'Unknown action' };
