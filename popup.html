@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Website Generator for B12</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Website Generator</h1>
+      <p class="subtitle">Transform web content into B12 websites</p>
+    </div>
+
+    <div class="options">
+      <h2>What do you want to convert?</h2>
+
+      <button class="option-btn" id="extractSelected">
+        <span class="icon">✂️</span>
+        <div class="option-text">
+          <strong>Selected Content</strong>
+          <small>Convert highlighted text, images, or tables</small>
+        </div>
+      </button>
+
+      <button class="option-btn" id="extractPage">
+        <span class="icon">📄</span>
+        <div class="option-text">
+          <strong>Entire Page</strong>
+          <small>Clone the current website with B12</small>
+        </div>
+      </button>
+
+      <button class="option-btn" id="extractVisible">
+        <span class="icon">👁️</span>
+        <div class="option-text">
+          <strong>Visible Content</strong>
+          <small>Extract what's currently in view</small>
+        </div>
+      </button>
+
+      <button class="option-btn" id="uploadImage">
+        <span class="icon">🖼️</span>
+        <div class="option-text">
+          <strong>Upload Mockup/Screenshot</strong>
+          <small>Turn designs into websites</small>
+        </div>
+      </button>
+      <input type="file" id="imageInput" accept="image/*" style="display: none;">
+    </div>
+
+    <div class="advanced-options">
+      <details>
+        <summary>Advanced Options</summary>
+        <div class="advanced-content">
+          <label>
+            <input type="checkbox" id="includeStyles" checked>
+            Include styling information
+          </label>
+          <label>
+            <input type="checkbox" id="includeImages" checked>
+            Include images
+          </label>
+          <label>
+            <input type="checkbox" id="includeLayout" checked>
+            Describe layout structure
+          </label>
+          <label>
+            <input type="checkbox" id="enhancePrompt" checked>
+            AI-enhance prompt
+          </label>
+        </div>
+      </details>
+    </div>
+
+    <div id="status" class="status hidden"></div>
+
+    <div id="preview" class="preview hidden">
+      <h3>Generated Prompt Preview:</h3>
+      <div id="promptPreview" class="prompt-preview"></div>
+      <div class="actions">
+        <button id="generateBtn" class="primary-btn">Generate Website with B12</button>
+        <button id="copyBtn" class="secondary-btn">Copy Prompt</button>
+        <button id="editBtn" class="secondary-btn">Edit Prompt</button>
+      </div>
+    </div>
+
+    <div id="editMode" class="edit-mode hidden">
+      <h3>Edit Your Prompt:</h3>
+      <textarea id="promptEditor" rows="10"></textarea>
+      <div class="actions">
+        <button id="saveEditBtn" class="primary-btn">Save & Generate</button>
+        <button id="cancelEditBtn" class="secondary-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
