@@ -12,9 +12,6 @@ chrome.runtime.onInstalled.addListener((details) => {
       includeLayout: true,
       enhancePrompt: true
     });
-
-    // Open welcome page (optional)
-    // chrome.tabs.create({ url: 'welcome.html' });
   } else if (details.reason === 'update') {
     console.log('Website Generator extension updated');
   }
@@ -22,116 +19,67 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // Context menu creation (right-click menu)
 chrome.runtime.onInstalled.addListener(() => {
-  // Create context menu for selected text
+  // Create context menu for entire site
   chrome.contextMenus.create({
-    id: 'generateFromSelection',
-    title: 'Generate B12 website from selection',
-    contexts: ['selection']
+    id: 'generateFromSite',
+    title: 'Clone this site with B12 (up to 5 pages)',
+    contexts: ['page']
   });
 
   // Create context menu for images
   chrome.contextMenus.create({
     id: 'generateFromImage',
-    title: 'Generate B12 website from image',
+    title: 'Generate B12 website from this image',
     contexts: ['image']
-  });
-
-  // Create context menu for pages
-  chrome.contextMenus.create({
-    id: 'generateFromPage',
-    title: 'Clone this page with B12',
-    contexts: ['page']
   });
 });
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === 'generateFromSelection') {
-    handleSelectionGeneration(info, tab);
+  if (info.menuItemId === 'generateFromSite') {
+    handleSiteGeneration(tab);
   } else if (info.menuItemId === 'generateFromImage') {
     handleImageGeneration(info, tab);
-  } else if (info.menuItemId === 'generateFromPage') {
-    handlePageGeneration(tab);
   }
 });
 
 /**
- * Handle generation from selected text
+ * Handle generation from entire site (multi-page)
  */
-async function handleSelectionGeneration(info, tab) {
-  try {
-    const response = await chrome.tabs.sendMessage(tab.id, { action: 'extractSelected' });
-
-    if (response && response.success && response.data) {
-      const prompt = generateQuickPrompt(response.data, 'selection');
-      const b12Url = createB12Url(prompt);
-      chrome.tabs.create({ url: b12Url });
-    }
-  } catch (error) {
-    console.error('Error generating from selection:', error);
-    // Open popup as fallback
-    chrome.action.openPopup();
-  }
+async function handleSiteGeneration(tab) {
+  // Simply open the popup - the user can click "Entire Site" there
+  chrome.action.openPopup();
 }
 
 /**
  * Handle generation from image
  */
 function handleImageGeneration(info, tab) {
-  const prompt = `Create a website featuring the image from: ${info.srcUrl}\n\n` +
-    'Requirements:\n' +
-    '- Use this image prominently in the design\n' +
-    '- Create a modern, professional layout around it\n' +
-    '- Ensure mobile responsiveness\n' +
-    '- Add appropriate content sections\n';
+  const prompt = `Create a professional website featuring this image:\n\n` +
+    `Image Source: ${info.srcUrl}\n\n` +
+    'REQUIREMENTS:\n\n' +
+    'Design:\n' +
+    '- Use this image as the hero/banner image prominently\n' +
+    '- Create a modern, visually appealing layout that complements the image\n' +
+    '- Design should feel professional and polished\n' +
+    '- Ensure the image is displayed at optimal quality and size\n\n' +
+    'Layout:\n' +
+    '- Hero section with the image as the focal point\n' +
+    '- Supporting content sections below\n' +
+    '- Clear call-to-action elements\n' +
+    '- Responsive design for all devices\n\n' +
+    'Style:\n' +
+    '- Modern, clean aesthetic\n' +
+    '- Color scheme that complements the image\n' +
+    '- Appropriate typography and spacing\n' +
+    '- Smooth transitions and subtle animations\n\n' +
+    'Content:\n' +
+    '- Engaging placeholder content\n' +
+    '- Proper content hierarchy\n' +
+    '- SEO-friendly structure\n';
 
   const b12Url = createB12Url(prompt);
   chrome.tabs.create({ url: b12Url });
-}
-
-/**
- * Handle generation from entire page
- */
-async function handlePageGeneration(tab) {
-  try {
-    const response = await chrome.tabs.sendMessage(tab.id, { action: 'extractPage' });
-
-    if (response && response.success && response.data) {
-      const prompt = generateQuickPrompt(response.data, 'page');
-      const b12Url = createB12Url(prompt);
-      chrome.tabs.create({ url: b12Url });
-    }
-  } catch (error) {
-    console.error('Error generating from page:', error);
-    // Open popup as fallback
-    chrome.action.openPopup();
-  }
-}
-
-/**
- * Generate a quick prompt from extracted data
- */
-function generateQuickPrompt(data, type) {
-  let prompt = '';
-
-  if (type === 'selection') {
-    prompt = 'Create a website with the following content:\n\n';
-    if (data.text) {
-      prompt += data.text.substring(0, 1000);
-    }
-    prompt += '\n\nMake it modern, responsive, and professional.';
-  } else if (type === 'page') {
-    prompt = `Create a website similar to: ${data.url}\n\n`;
-    if (data.title) {
-      prompt += `Title: ${data.title}\n\n`;
-    }
-    if (data.mainContent) {
-      prompt += `Main content:\n${data.mainContent.substring(0, 800)}\n\n`;
-    }
-    prompt += 'Make it modern, responsive, and professional with similar structure and style.';
-  }
-
-  return prompt;
 }
 
 /**
@@ -148,9 +96,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'generateB12Url') {
     const url = createB12Url(request.prompt);
     sendResponse({ url });
+  } else if (request.action === 'captureScreenshot') {
+    // Handle screenshot capture
+    handleScreenshotCapture(request.rect, sender.tab);
+    sendResponse({ success: true });
   }
   return true;
 });
+
+/**
+ * Handle screenshot capture
+ */
+async function handleScreenshotCapture(rect, tab) {
+  try {
+    // Capture the visible tab
+    const screenshot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+
+    // Store the screenshot and area info
+    await chrome.storage.local.set({
+      screenshot: screenshot,
+      screenshotRect: rect,
+      timestamp: Date.now()
+    });
+
+    // Open popup with the screenshot
+    chrome.action.openPopup();
+
+  } catch (error) {
+    console.error('Screenshot capture error:', error);
+  }
+}
 
 // Handle keyboard shortcuts (if defined in manifest)
 chrome.commands.onCommand.addListener((command) => {
