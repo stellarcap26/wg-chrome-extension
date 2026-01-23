@@ -96,12 +96,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'generateB12Url') {
     const url = createB12Url(request.prompt);
     sendResponse({ url });
+    return false;
   } else if (request.action === 'captureScreenshot') {
-    // Handle screenshot capture
-    handleScreenshotCapture(request.rect, sender.tab);
-    sendResponse({ success: true });
+    // Handle screenshot capture asynchronously
+    handleScreenshotCapture(request.rect, sender.tab)
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => {
+        console.error('Screenshot capture failed:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Keep channel open for async response
   }
-  return true;
+  return false;
 });
 
 /**
@@ -109,8 +115,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
  */
 async function handleScreenshotCapture(rect, tab) {
   try {
+    // Check if the URL is restricted
+    if (!tab || !tab.url) {
+      throw new Error('Cannot access tab information');
+    }
+
+    const restrictedProtocols = ['chrome:', 'chrome-extension:', 'edge:', 'about:', 'data:'];
+    const isRestricted = restrictedProtocols.some(protocol => tab.url.startsWith(protocol));
+
+    if (isRestricted) {
+      throw new Error('Cannot capture screenshots on browser internal pages. Please navigate to a regular website.');
+    }
+
     // Capture the visible tab
     const screenshot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+
+    if (!screenshot) {
+      throw new Error('Failed to capture screenshot');
+    }
 
     // Store the screenshot and area info
     await chrome.storage.local.set({
@@ -119,11 +141,30 @@ async function handleScreenshotCapture(rect, tab) {
       timestamp: Date.now()
     });
 
-    // Open popup with the screenshot
-    chrome.action.openPopup();
+    // Show success notification to user
+    await chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon48.png',
+      title: 'Screenshot Captured!',
+      message: 'Click the extension icon to generate a website from your screenshot.',
+      priority: 2
+    });
+
+    // Set a badge to indicate screenshot is ready
+    await chrome.action.setBadgeText({ text: '1' });
+    await chrome.action.setBadgeBackgroundColor({ color: '#5048C7' });
 
   } catch (error) {
     console.error('Screenshot capture error:', error);
+    // Show error notification to user
+    await chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon48.png',
+      title: 'Screenshot Capture Failed',
+      message: error.message || 'Failed to capture screenshot. Please try again on a regular website.',
+      priority: 2
+    });
+    throw error;
   }
 }
 
