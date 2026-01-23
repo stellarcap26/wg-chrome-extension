@@ -346,3 +346,29 @@ body {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* Paste area styling */
+.paste-area {
+  margin: 16px 20px 0;
+  padding: 32px 20px;
+  background: linear-gradient(135deg, #F6F5FE 0%, #E6F3F9 100%);
+  border: 2px dashed #5048C7;
+  border-radius: 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s ease-in-out;
+}
+
+.paste-area:hover {
+  background: linear-gradient(135deg, #E5E4F0 0%, #D6ECF5 100%);
+  border-color: #413AA1;
+  transform: scale(1.02);
+}
+
+.paste-area p {
+  font-family: 'Poppins', sans-serif;
+  font-size: 15px;
+  color: #5048C7;
+  font-weight: 600;
+  margin: 0;
+}

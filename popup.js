@@ -5,9 +5,9 @@ let currentExtractedData = null;
 
 // DOM elements
 const extractPageBtn = document.getElementById('extractPage');
-const captureScreenshotBtn = document.getElementById('captureScreenshot');
 const uploadImageBtn = document.getElementById('uploadImage');
 const imageInput = document.getElementById('imageInput');
+const pasteArea = document.getElementById('pasteArea');
 
 const statusDiv = document.getElementById('status');
 const previewDiv = document.getElementById('preview');
@@ -25,13 +25,22 @@ const cancelEditBtn = document.getElementById('cancelEditBtn');
 const includeStylesCheckbox = document.getElementById('includeStyles');
 const includeImagesCheckbox = document.getElementById('includeImages');
 const includeLayoutCheckbox = document.getElementById('includeLayout');
+const showFullContentCheckbox = document.getElementById('showFullContent');
 const enhancePromptCheckbox = document.getElementById('enhancePrompt');
 
 // Event listeners
 extractPageBtn.addEventListener('click', () => extractMultiPageContent());
-captureScreenshotBtn.addEventListener('click', () => captureScreenshot());
-uploadImageBtn.addEventListener('click', () => imageInput.click());
+uploadImageBtn.addEventListener('click', () => {
+  imageInput.click();
+  pasteArea.classList.remove('hidden');
+});
 imageInput.addEventListener('change', handleImageUpload);
+
+// Add paste support
+document.addEventListener('paste', handlePaste);
+pasteArea.addEventListener('click', () => {
+  pasteArea.classList.add('hidden');
+});
 
 generateBtn.addEventListener('click', generateWebsite);
 copyBtn.addEventListener('click', copyPrompt);
@@ -44,29 +53,29 @@ cancelEditBtn.addEventListener('click', hideEditMode);
  */
 async function extractMultiPageContent() {
   try {
-    showStatus('Analyzing website structure...', 'info');
+    showStatus('🔍 Analyzing website structure...', 'info');
 
     // Get current tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
     if (!tab) {
-      showStatus('Could not access current tab', 'error');
+      showStatus('❌ Could not access current tab', 'error');
       return;
     }
 
     // Extract current page
-    showStatus('Extracting page 1...', 'info');
+    showStatus('📄 Extracting page 1... this is exciting!', 'info');
     const currentPageResponse = await chrome.tabs.sendMessage(tab.id, { action: 'extractPage' });
 
     if (!currentPageResponse || !currentPageResponse.success) {
-      showStatus('Failed to extract content: ' + (currentPageResponse?.error || 'Unknown error'), 'error');
+      showStatus('❌ Failed to extract content: ' + (currentPageResponse?.error || 'Unknown error'), 'error');
       return;
     }
 
     const pages = [currentPageResponse.data];
 
     // Get navigation links
-    showStatus('Finding related pages...', 'info');
+    showStatus('🔗 Finding related pages...', 'info');
     const navLinksResponse = await chrome.tabs.sendMessage(tab.id, { action: 'getNavigationLinks' });
 
     if (navLinksResponse && navLinksResponse.success && navLinksResponse.data) {
@@ -75,7 +84,7 @@ async function extractMultiPageContent() {
       // Extract content from additional pages
       for (let i = 0; i < navLinks.length; i++) {
         try {
-          showStatus(`Extracting page ${i + 2} of ${navLinks.length + 1}...`, 'info');
+          showStatus(`📄 Extracting page ${i + 2} of ${navLinks.length + 1}... hang tight!`, 'info');
 
           // Create temporary tab to extract content
           const newTab = await chrome.tabs.create({ url: navLinks[i].url, active: false });
@@ -112,7 +121,7 @@ async function extractMultiPageContent() {
       }
     }
 
-    showStatus('Generating comprehensive prompt...', 'info');
+    showStatus('✨ Crafting your perfect prompt...', 'info');
 
     currentExtractedData = {
       multiPage: true,
@@ -131,49 +140,109 @@ async function extractMultiPageContent() {
 
   } catch (error) {
     console.error('Extraction error:', error);
-    showStatus('Error: ' + error.message, 'error');
+    showStatus('❌ Oops! Error: ' + error.message, 'error');
   }
 }
 
 /**
- * Capture screenshot of selected area
+ * Handle paste event for images
  */
-async function captureScreenshot() {
+async function handlePaste(event) {
+  const items = event.clipboardData?.items;
+  if (!items) return;
+
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].type.indexOf('image') !== -1) {
+      event.preventDefault();
+      const blob = items[i].getAsFile();
+      processImageFile(blob);
+      pasteArea.classList.add('hidden');
+      showStatus('🎉 Image pasted! Creating your prompt...', 'info');
+      break;
+    }
+  }
+}
+
+/**
+ * Process image file (from paste or upload)
+ */
+async function processImageFile(file) {
+  if (!file || !file.type.startsWith('image/')) {
+    showStatus('Please paste or upload a valid image file', 'error');
+    return;
+  }
+
   try {
-    // Get current tab
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    showStatus('✨ Processing your masterpiece...', 'info');
 
-    if (!tab) {
-      showStatus('Could not access current tab', 'error');
-      return;
-    }
+    // Read image as data URL
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const imageData = e.target.result;
 
-    // Check if the URL is restricted
-    const restrictedProtocols = ['chrome:', 'chrome-extension:', 'edge:', 'about:', 'data:'];
-    const isRestricted = restrictedProtocols.some(protocol => tab.url.startsWith(protocol));
+      // Create prompt for mockup/screenshot
+      let prompt = '🎨 Create a website that EXACTLY matches the provided mockup/screenshot.\n\n';
+      prompt += 'CRITICAL REQUIREMENTS:\n\n';
+      prompt += 'Visual Design:\n';
+      prompt += '- Replicate the EXACT layout shown in the mockup down to pixel-perfect precision\n';
+      prompt += '- Match all colors, gradients, and color schemes precisely\n';
+      prompt += '- Use the same typography, font sizes, and text hierarchy\n';
+      prompt += '- Recreate all visual effects: shadows, borders, rounded corners, overlays\n';
+      prompt += '- Match spacing, padding, and margins exactly as shown\n';
+      prompt += '- Implement any animations or transitions visible in the mockup\n\n';
 
-    if (isRestricted) {
-      showStatus('Cannot capture screenshots on browser internal pages. Please navigate to a regular website.', 'error');
-      return;
-    }
+      prompt += 'Components & Elements:\n';
+      prompt += '- Include every section, component, and UI element from the mockup\n';
+      prompt += '- Recreate all buttons with exact styling (colors, shapes, hover states)\n';
+      prompt += '- Implement all navigation elements (menus, dropdowns, breadcrumbs)\n';
+      prompt += '- Add all form fields with proper styling and validation\n';
+      prompt += '- Include all cards, panels, and content containers\n';
+      prompt += '- Replicate any icons, badges, or decorative elements\n\n';
 
-    showStatus('Preparing screenshot capture...', 'info');
+      prompt += 'Images & Media:\n';
+      prompt += '- Use placeholder images that match the dimensions shown\n';
+      prompt += '- Maintain the same aspect ratios and image treatments\n';
+      prompt += '- Include any background images or patterns\n';
+      prompt += '- Add video placeholders if videos are shown in the mockup\n\n';
 
-    // Wait a moment to ensure page is stable
-    await new Promise(resolve => setTimeout(resolve, 300));
+      prompt += 'Responsiveness:\n';
+      prompt += '- Make the design fully responsive and mobile-friendly\n';
+      prompt += '- Ensure the layout adapts gracefully to different screen sizes\n';
+      prompt += '- Maintain the design integrity on tablets and mobile devices\n\n';
 
-    // Inject screenshot selector
-    await chrome.scripting.executeScript({
-      target: { tabId: tab.id },
-      files: ['screenshot-selector.js']
-    });
+      prompt += 'Interactivity:\n';
+      prompt += '- Implement any interactive elements visible (sliders, accordions, tabs)\n';
+      prompt += '- Add appropriate hover effects on clickable elements\n';
+      prompt += '- Ensure smooth transitions and animations\n';
+      prompt += '- Make all buttons and links functional\n\n';
 
-    // Close popup to allow user to select area
-    window.close();
+      prompt += 'Performance:\n';
+      prompt += '- Optimize all assets for fast loading\n';
+      prompt += '- Use modern web best practices\n';
+      prompt += '- Ensure cross-browser compatibility\n';
+      prompt += '- Follow accessibility guidelines\n\n';
+
+      prompt += 'Content:\n';
+      prompt += '- Use readable placeholder text where text is not clearly visible\n';
+      prompt += '- Maintain content hierarchy and organization from the mockup\n';
+      prompt += '- Preserve the tone and messaging style\n\n';
+
+      prompt += '✨ Note: This website is based on a design mockup/screenshot. ';
+      prompt += 'The goal is to create a pixel-perfect recreation that matches the visual design exactly.\n';
+
+      currentPrompt = prompt;
+      currentExtractedData = { type: 'image', imageData };
+
+      // Show preview
+      promptPreview.textContent = prompt;
+      previewDiv.classList.remove('hidden');
+      statusDiv.classList.add('hidden');
+    };
+
+    reader.readAsDataURL(file);
 
   } catch (error) {
-    console.error('Screenshot error:', error);
-    showStatus('Error: ' + error.message, 'error');
+    showStatus('❌ Error processing image: ' + error.message, 'error');
   }
 }
 
@@ -185,6 +254,7 @@ function generateMultiPagePrompt(data) {
     includeStyles: includeStylesCheckbox.checked,
     includeImages: includeImagesCheckbox.checked,
     includeLayout: includeLayoutCheckbox.checked,
+    showFullContent: showFullContentCheckbox.checked,
     enhance: enhancePromptCheckbox.checked
   };
 
@@ -193,7 +263,7 @@ function generateMultiPagePrompt(data) {
   // Main page (first page)
   const mainPage = data.pages[0];
 
-  prompt += `Create a comprehensive website based on: ${mainPage.url}\n\n`;
+  prompt += `🌐 Create a comprehensive website based on: ${mainPage.url}\n\n`;
 
   if (mainPage.title) {
     prompt += `Website Title: ${mainPage.title}\n\n`;
@@ -205,36 +275,129 @@ function generateMultiPagePrompt(data) {
 
   // Multi-page structure
   if (data.totalPages > 1) {
-    prompt += `MULTI-PAGE WEBSITE (${data.totalPages} pages):\n\n`;
+    prompt += `📚 MULTI-PAGE WEBSITE (${data.totalPages} pages):\n\n`;
 
     data.pages.forEach((page, index) => {
       const pageNum = index + 1;
       const pageName = page.navLinkText || (index === 0 ? 'Home' : `Page ${pageNum}`);
 
-      prompt += `=== PAGE ${pageNum}: ${pageName} ===\n`;
+      prompt += `${'='.repeat(60)}\n`;
+      prompt += `PAGE ${pageNum}: ${pageName}\n`;
+      prompt += `${'='.repeat(60)}\n`;
       prompt += `URL: ${page.url}\n\n`;
 
-      // Page structure
-      if (page.headings && page.headings.length > 0) {
-        prompt += `Main Sections:\n`;
-        const mainHeadings = page.headings.filter(h => h.level <= 2).slice(0, 6);
-        mainHeadings.forEach(heading => {
-          prompt += `${'  '.repeat(heading.level - 1)}- ${heading.text}\n`;
-        });
-        prompt += '\n';
-      }
+      // If showFullContent is enabled, provide detailed section-by-section analysis
+      if (options.showFullContent) {
+        prompt += `📋 DETAILED PAGE STRUCTURE:\n\n`;
 
-      // Page content summary
-      if (page.mainContent) {
-        const contentPreview = page.mainContent.substring(0, 400);
-        prompt += `Content Summary:\n${contentPreview}${page.mainContent.length > 400 ? '...' : ''}\n\n`;
+        // Page sections with full content
+        if (page.headings && page.headings.length > 0) {
+          prompt += `SECTIONS & CONTENT:\n\n`;
+
+          // Group content by sections (H1, H2 headings)
+          const sections = [];
+          let currentSection = null;
+
+          page.headings.forEach(heading => {
+            if (heading.level === 1 || heading.level === 2) {
+              if (currentSection) {
+                sections.push(currentSection);
+              }
+              currentSection = {
+                title: heading.text,
+                level: heading.level,
+                subheadings: []
+              };
+            } else if (currentSection && heading.level > 2) {
+              currentSection.subheadings.push(heading);
+            }
+          });
+          if (currentSection) sections.push(currentSection);
+
+          // Output each section with full details
+          sections.forEach((section, sIdx) => {
+            prompt += `\n${sIdx + 1}. ${section.level === 1 ? 'SECTION' : 'Subsection'}: "${section.title}"\n`;
+            prompt += `${'─'.repeat(50)}\n`;
+
+            if (section.subheadings.length > 0) {
+              prompt += `Subsections:\n`;
+              section.subheadings.forEach(sub => {
+                prompt += `${'  '.repeat(sub.level - 2)}- ${sub.text}\n`;
+              });
+              prompt += '\n';
+            }
+          });
+        }
+
+        // Full content extraction (not just summary)
+        if (page.mainContent) {
+          prompt += `\nFULL PAGE CONTENT:\n`;
+          prompt += `${'─'.repeat(50)}\n`;
+          // Include more content for detailed view
+          const contentLimit = options.showFullContent ? 2000 : 400;
+          const fullContent = page.mainContent.substring(0, contentLimit);
+          prompt += `${fullContent}${page.mainContent.length > contentLimit ? '...' : ''}\n\n`;
+        }
+
+        // Detailed layout structure for this page
+        if (page.layout) {
+          prompt += `LAYOUT STRUCTURE:\n`;
+          if (page.layout.hasHeader) prompt += `- Header: ${page.layout.hasHeader ? 'Present with logo and navigation' : 'None'}\n`;
+          if (page.layout.hasNavigation) prompt += `- Navigation: ${page.layout.hasNavigation ? 'Main menu with links' : 'None'}\n`;
+          if (page.layout.hasSidebar) prompt += `- Sidebar: ${page.layout.hasSidebar ? 'Present' : 'None'}\n`;
+          if (page.layout.hasFooter) prompt += `- Footer: ${page.layout.hasFooter ? 'Present with additional info' : 'None'}\n`;
+          prompt += '\n';
+        }
+
+        // Detailed styling for this page
+        if (options.includeStyles && page.colors && page.colors.length > 0) {
+          prompt += `STYLE DETAILS:\n`;
+          prompt += `Colors used: ${page.colors.slice(0, 8).join(', ')}\n`;
+          if (page.fonts && page.fonts.length > 0) {
+            prompt += `Fonts: ${page.fonts.slice(0, 5).join(', ')}\n`;
+          }
+          prompt += '\n';
+        }
+
+      } else {
+        // Standard summary view
+        // Page structure
+        if (page.headings && page.headings.length > 0) {
+          prompt += `Main Sections:\n`;
+          const mainHeadings = page.headings.filter(h => h.level <= 2).slice(0, 6);
+          mainHeadings.forEach(heading => {
+            prompt += `${'  '.repeat(heading.level - 1)}- ${heading.text}\n`;
+          });
+          prompt += '\n';
+        }
+
+        // Page content summary
+        if (page.mainContent) {
+          const contentPreview = page.mainContent.substring(0, 400);
+          prompt += `Content Summary:\n${contentPreview}${page.mainContent.length > 400 ? '...' : ''}\n\n`;
+        }
       }
 
       // Forms on this page
       if (page.forms && page.forms.length > 0) {
-        prompt += `Forms: ${page.forms.length} form(s) with fields like `;
-        const fieldSample = page.forms[0].fields.slice(0, 5).map(f => f.label || f.type).filter(Boolean).join(', ');
-        prompt += fieldSample + '\n\n';
+        prompt += `FORMS:\n`;
+        page.forms.forEach((form, fIdx) => {
+          prompt += `Form ${fIdx + 1}: ${form.fields.length} fields\n`;
+          const fields = form.fields.slice(0, 10).map(f => `  - ${f.label || f.type}${f.required ? ' (required)' : ''}`).join('\n');
+          prompt += fields + '\n';
+        });
+        prompt += '\n';
+      }
+
+      // Tables on this page
+      if (page.tables && page.tables.length > 0) {
+        prompt += `TABLES: ${page.tables.length} data table(s)\n`;
+        page.tables.forEach((table, tIdx) => {
+          if (table.headers && table.headers.length > 0) {
+            prompt += `Table ${tIdx + 1}: Columns: ${table.headers.join(', ')}\n`;
+          }
+        });
+        prompt += '\n';
       }
 
       prompt += '\n';
@@ -411,83 +574,8 @@ async function handleImageUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
 
-  if (!file.type.startsWith('image/')) {
-    showStatus('Please upload a valid image file', 'error');
-    return;
-  }
-
-  try {
-    showStatus('Processing image...', 'info');
-
-    // Read image as data URL
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const imageData = e.target.result;
-
-      // Create prompt for mockup/screenshot
-      let prompt = 'Create a website that EXACTLY matches the provided mockup/screenshot.\n\n';
-      prompt += 'CRITICAL REQUIREMENTS:\n\n';
-      prompt += 'Visual Design:\n';
-      prompt += '- Replicate the EXACT layout shown in the mockup down to pixel-perfect precision\n';
-      prompt += '- Match all colors, gradients, and color schemes precisely\n';
-      prompt += '- Use the same typography, font sizes, and text hierarchy\n';
-      prompt += '- Recreate all visual effects: shadows, borders, rounded corners, overlays\n';
-      prompt += '- Match spacing, padding, and margins exactly as shown\n';
-      prompt += '- Implement any animations or transitions visible in the mockup\n\n';
-
-      prompt += 'Components & Elements:\n';
-      prompt += '- Include every section, component, and UI element from the mockup\n';
-      prompt += '- Recreate all buttons with exact styling (colors, shapes, hover states)\n';
-      prompt += '- Implement all navigation elements (menus, dropdowns, breadcrumbs)\n';
-      prompt += '- Add all form fields with proper styling and validation\n';
-      prompt += '- Include all cards, panels, and content containers\n';
-      prompt += '- Replicate any icons, badges, or decorative elements\n\n';
-
-      prompt += 'Images & Media:\n';
-      prompt += '- Use placeholder images that match the dimensions shown\n';
-      prompt += '- Maintain the same aspect ratios and image treatments\n';
-      prompt += '- Include any background images or patterns\n';
-      prompt += '- Add video placeholders if videos are shown in the mockup\n\n';
-
-      prompt += 'Responsiveness:\n';
-      prompt += '- Make the design fully responsive and mobile-friendly\n';
-      prompt += '- Ensure the layout adapts gracefully to different screen sizes\n';
-      prompt += '- Maintain the design integrity on tablets and mobile devices\n\n';
-
-      prompt += 'Interactivity:\n';
-      prompt += '- Implement any interactive elements visible (sliders, accordions, tabs)\n';
-      prompt += '- Add appropriate hover effects on clickable elements\n';
-      prompt += '- Ensure smooth transitions and animations\n';
-      prompt += '- Make all buttons and links functional\n\n';
-
-      prompt += 'Performance:\n';
-      prompt += '- Optimize all assets for fast loading\n';
-      prompt += '- Use modern web best practices\n';
-      prompt += '- Ensure cross-browser compatibility\n';
-      prompt += '- Follow accessibility guidelines\n\n';
-
-      prompt += 'Content:\n';
-      prompt += '- Use readable placeholder text where text is not clearly visible\n';
-      prompt += '- Maintain content hierarchy and organization from the mockup\n';
-      prompt += '- Preserve the tone and messaging style\n\n';
-
-      prompt += 'Note: This website is based on a design mockup/screenshot provided by the user. ';
-      prompt += 'The goal is to create a pixel-perfect recreation that matches the visual design exactly.\n';
-
-      currentPrompt = prompt;
-      currentExtractedData = { type: 'image', imageData };
-
-      // Show preview
-      promptPreview.textContent = prompt;
-      previewDiv.classList.remove('hidden');
-      statusDiv.classList.add('hidden');
-    };
-
-    reader.readAsDataURL(file);
-
-  } catch (error) {
-    showStatus('Error processing image: ' + error.message, 'error');
-  }
+  processImageFile(file);
+  pasteArea.classList.add('hidden');
 }
 
 /**
@@ -495,7 +583,7 @@ async function handleImageUpload(event) {
  */
 function generateWebsite() {
   if (!currentPrompt) {
-    showStatus('No prompt available', 'error');
+    showStatus('❌ No prompt available', 'error');
     return;
   }
 
@@ -505,7 +593,7 @@ function generateWebsite() {
   chrome.tabs.create({ url: b12Url });
 
   // Show success message
-  showStatus('Opening B12 website builder...', 'success');
+  showStatus('🚀 Opening B12 website builder... let\'s make magic!', 'success');
 
   // Close popup after a short delay
   setTimeout(() => {
@@ -528,12 +616,12 @@ function createB12Url(prompt) {
 async function copyPrompt() {
   try {
     await navigator.clipboard.writeText(currentPrompt);
-    showStatus('Prompt copied to clipboard!', 'success');
+    showStatus('📋 Prompt copied to clipboard! You\'re all set!', 'success');
     setTimeout(() => {
       statusDiv.classList.add('hidden');
     }, 2000);
   } catch (error) {
-    showStatus('Failed to copy: ' + error.message, 'error');
+    showStatus('❌ Failed to copy: ' + error.message, 'error');
   }
 }
 
@@ -553,13 +641,17 @@ function showEditMode() {
 function saveEdit() {
   currentPrompt = promptEditor.value.trim();
   if (!currentPrompt) {
-    showStatus('Prompt cannot be empty', 'error');
+    showStatus('❌ Prompt cannot be empty', 'error');
     return;
   }
 
   promptPreview.textContent = currentPrompt;
   hideEditMode();
   previewDiv.classList.remove('hidden');
+  showStatus('✅ Edits saved! Looking good!', 'success');
+  setTimeout(() => {
+    statusDiv.classList.add('hidden');
+  }, 2000);
 }
 
 /**
@@ -580,97 +672,6 @@ function showStatus(message, type = 'info') {
 }
 
 /**
- * Process stored screenshot and generate prompt
- */
-async function processStoredScreenshot() {
-  try {
-    const data = await chrome.storage.local.get(['screenshot', 'screenshotRect', 'timestamp']);
-
-    if (!data.screenshot) {
-      return; // No screenshot stored
-    }
-
-    // Check if screenshot is recent (within last 5 minutes)
-    const now = Date.now();
-    if (!data.timestamp || (now - data.timestamp) > 300000) {
-      // Screenshot is too old, clear it
-      await chrome.storage.local.remove(['screenshot', 'screenshotRect', 'timestamp']);
-      await chrome.action.setBadgeText({ text: '' });
-      return;
-    }
-
-    // Clear the stored screenshot so it doesn't load again
-    await chrome.storage.local.remove(['screenshot', 'screenshotRect', 'timestamp']);
-
-    // Clear the badge
-    await chrome.action.setBadgeText({ text: '' });
-
-    showStatus('Processing screenshot...', 'info');
-
-    // Generate prompt for screenshot
-    let prompt = 'Create a website that EXACTLY matches the provided screenshot.\n\n';
-    prompt += 'CRITICAL REQUIREMENTS:\n\n';
-    prompt += 'Visual Design:\n';
-    prompt += '- Replicate the EXACT layout shown in the screenshot down to pixel-perfect precision\n';
-    prompt += '- Match all colors, gradients, and color schemes precisely\n';
-    prompt += '- Use the same typography, font sizes, and text hierarchy\n';
-    prompt += '- Recreate all visual effects: shadows, borders, rounded corners, overlays\n';
-    prompt += '- Match spacing, padding, and margins exactly as shown\n';
-    prompt += '- Implement any animations or transitions visible in the screenshot\n\n';
-
-    prompt += 'Components & Elements:\n';
-    prompt += '- Include every section, component, and UI element from the screenshot\n';
-    prompt += '- Recreate all buttons with exact styling (colors, shapes, hover states)\n';
-    prompt += '- Implement all navigation elements (menus, dropdowns, breadcrumbs)\n';
-    prompt += '- Add all form fields with proper styling and validation\n';
-    prompt += '- Include all cards, panels, and content containers\n';
-    prompt += '- Replicate any icons, badges, or decorative elements\n\n';
-
-    prompt += 'Images & Media:\n';
-    prompt += '- Use placeholder images that match the dimensions shown\n';
-    prompt += '- Maintain the same aspect ratios and image treatments\n';
-    prompt += '- Include any background images or patterns\n';
-    prompt += '- Add video placeholders if videos are shown in the screenshot\n\n';
-
-    prompt += 'Responsiveness:\n';
-    prompt += '- Make the design fully responsive and mobile-friendly\n';
-    prompt += '- Ensure the layout adapts gracefully to different screen sizes\n';
-    prompt += '- Maintain the design integrity on tablets and mobile devices\n\n';
-
-    prompt += 'Interactivity:\n';
-    prompt += '- Implement any interactive elements visible (sliders, accordions, tabs)\n';
-    prompt += '- Add appropriate hover effects on clickable elements\n';
-    prompt += '- Ensure smooth transitions and animations\n';
-    prompt += '- Make all buttons and links functional\n\n';
-
-    prompt += 'Performance:\n';
-    prompt += '- Optimize all assets for fast loading\n';
-    prompt += '- Use modern web best practices\n';
-    prompt += '- Ensure cross-browser compatibility\n';
-    prompt += '- Follow accessibility guidelines\n\n';
-
-    prompt += 'Content:\n';
-    prompt += '- Use readable placeholder text where text is not clearly visible\n';
-    prompt += '- Maintain content hierarchy and organization from the screenshot\n';
-    prompt += '- Preserve the tone and messaging style\n\n';
-
-    prompt += 'Note: This website is based on a screenshot captured by the user. ';
-    prompt += 'The goal is to create a pixel-perfect recreation that matches the visual design exactly.\n';
-
-    currentPrompt = prompt;
-    currentExtractedData = { type: 'screenshot', imageData: data.screenshot };
-
-    // Show preview
-    promptPreview.textContent = prompt;
-    previewDiv.classList.remove('hidden');
-    statusDiv.classList.add('hidden');
-
-  } catch (error) {
-    console.error('Error processing screenshot:', error);
-  }
-}
-
-/**
  * Initialize popup
  */
 document.addEventListener('DOMContentLoaded', () => {
@@ -679,26 +680,26 @@ document.addEventListener('DOMContentLoaded', () => {
     includeStyles: true,
     includeImages: true,
     includeLayout: true,
+    showFullContent: true,
     enhancePrompt: true
   }, (items) => {
     includeStylesCheckbox.checked = items.includeStyles;
     includeImagesCheckbox.checked = items.includeImages;
     includeLayoutCheckbox.checked = items.includeLayout;
+    showFullContentCheckbox.checked = items.showFullContent;
     enhancePromptCheckbox.checked = items.enhancePrompt;
   });
 
   // Save options when changed
-  [includeStylesCheckbox, includeImagesCheckbox, includeLayoutCheckbox, enhancePromptCheckbox].forEach(checkbox => {
+  [includeStylesCheckbox, includeImagesCheckbox, includeLayoutCheckbox, showFullContentCheckbox, enhancePromptCheckbox].forEach(checkbox => {
     checkbox.addEventListener('change', () => {
       chrome.storage.sync.set({
         includeStyles: includeStylesCheckbox.checked,
         includeImages: includeImagesCheckbox.checked,
         includeLayout: includeLayoutCheckbox.checked,
+        showFullContent: showFullContentCheckbox.checked,
         enhancePrompt: enhancePromptCheckbox.checked
       });
     });
   });
-
-  // Check for stored screenshot from capture flow
-  processStoredScreenshot();
 });

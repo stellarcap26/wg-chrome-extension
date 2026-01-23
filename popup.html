@@ -9,8 +9,8 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>Website Generator</h1>
-      <p class="subtitle">Transform web content into B12 websites</p>
+      <h1>✨ Website Generator</h1>
+      <p class="subtitle">Transform any site into a B12 masterpiece!</p>
     </div>
 
     <div class="options">
@@ -24,27 +24,22 @@
         </div>
       </button>
 
-      <button class="option-btn" id="captureScreenshot">
-        <span class="icon">📸</span>
-        <div class="option-text">
-          <strong>Capture Screenshot</strong>
-          <small>Select and capture part of the website</small>
-        </div>
-      </button>
-
       <button class="option-btn" id="uploadImage">
-        <span class="icon">🖼️</span>
+        <span class="icon">🎨</span>
         <div class="option-text">
           <strong>Upload Mockup/Screenshot</strong>
-          <small>Turn designs into websites</small>
+          <small>Drop in your design and watch the magic happen!</small>
         </div>
       </button>
       <input type="file" id="imageInput" accept="image/*" style="display: none;">
+      <div id="pasteArea" class="paste-area hidden">
+        <p>📋 Paste your image here (Ctrl+V / Cmd+V)</p>
+      </div>
     </div>
 
     <div class="advanced-options">
       <details>
-        <summary>Advanced Options</summary>
+        <summary>🎛️ Advanced Options</summary>
         <div class="advanced-content">
           <label>
             <input type="checkbox" id="includeStyles" checked>
@@ -57,6 +52,10 @@
           <label>
             <input type="checkbox" id="includeLayout" checked>
             Describe layout structure
+          </label>
+          <label>
+            <input type="checkbox" id="showFullContent" checked>
+            Show full content (section by section)
           </label>
           <label>
             <input type="checkbox" id="enhancePrompt" checked>
