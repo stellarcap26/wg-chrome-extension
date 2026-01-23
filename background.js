@@ -159,7 +159,7 @@ async function handleScreenshotCapture(rect, tab) {
     // Show success notification to user
     await chrome.notifications.create({
       type: 'basic',
-      iconUrl: 'icons/icon48.png',
+      iconUrl: chrome.runtime.getURL('icons/icon48.png'),
       title: 'Screenshot Captured!',
       message: 'Click the extension icon to generate a website from your screenshot.',
       priority: 2
@@ -184,7 +184,7 @@ async function handleScreenshotCapture(rect, tab) {
 
     await chrome.notifications.create({
       type: 'basic',
-      iconUrl: 'icons/icon48.png',
+      iconUrl: chrome.runtime.getURL('icons/icon48.png'),
       title: 'Screenshot Capture Failed',
       message: errorMessage,
       priority: 2
