@@ -111,10 +111,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 /**
- * Handle screenshot capture with timeout
+ * Handle screenshot capture with timeout and retry logic
  */
 async function handleScreenshotCapture(rect, tab) {
-  const CAPTURE_TIMEOUT = 10000; // 10 seconds timeout
+  const CAPTURE_TIMEOUT = 15000; // 15 seconds timeout
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY = 1000; // 1 second between retries
 
   try {
     // Check if the URL is restricted
@@ -131,18 +133,45 @@ async function handleScreenshotCapture(rect, tab) {
 
     console.log('Starting screenshot capture for tab:', tab.id);
 
-    // Create a promise that will timeout
-    const capturePromise = chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    // Wait a moment for any pending renders to complete
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('Screenshot capture timed out after 10 seconds')), CAPTURE_TIMEOUT);
-    });
+    // Attempt capture with retry logic
+    let screenshot = null;
+    let lastError = null;
 
-    // Race between capture and timeout
-    const screenshot = await Promise.race([capturePromise, timeoutPromise]);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        console.log(`Screenshot capture attempt ${attempt + 1}/${MAX_RETRIES}`);
+
+        // Create a promise that will timeout
+        const capturePromise = chrome.tabs.captureVisibleTab(null, { format: 'png' });
+
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => reject(new Error('Screenshot capture timed out after 15 seconds')), CAPTURE_TIMEOUT);
+        });
+
+        // Race between capture and timeout
+        screenshot = await Promise.race([capturePromise, timeoutPromise]);
+
+        if (screenshot) {
+          console.log('Screenshot captured successfully on attempt', attempt + 1);
+          break; // Success! Exit retry loop
+        }
+      } catch (error) {
+        lastError = error;
+        console.warn(`Capture attempt ${attempt + 1} failed:`, error.message);
+
+        // If this isn't the last attempt, wait before retrying
+        if (attempt < MAX_RETRIES - 1) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY * (attempt + 1)));
+        }
+      }
+    }
 
     if (!screenshot) {
-      throw new Error('Failed to capture screenshot - no data returned');
+      // All retries failed
+      throw lastError || new Error('Failed to capture screenshot - no data returned after multiple attempts');
     }
 
     console.log('Screenshot captured successfully, storing...');
@@ -180,6 +209,10 @@ async function handleScreenshotCapture(rect, tab) {
       errorMessage = 'Screenshot capture timed out. The page may be loading slowly. Please wait for the page to fully load and try again.';
     } else if (error.message && error.message.includes('Cannot access')) {
       errorMessage = 'Cannot capture this page. Try a different website.';
+    } else if (error.message && error.message.includes('download') && error.message.includes('images')) {
+      errorMessage = 'Some images on the page are still loading. Please wait a moment and try again, or scroll to load all images first.';
+    } else if (error.message && error.message.includes('no data')) {
+      errorMessage = 'Screenshot capture failed. Please ensure the page is fully loaded and try again.';
     }
 
     await chrome.notifications.create({

@@ -45,9 +45,25 @@
   `;
   instructions.textContent = 'Click and drag to select an area, or press ESC to cancel';
 
+  // Add dimension display
+  const dimensionDisplay = document.createElement('div');
+  dimensionDisplay.style.cssText = `
+    position: fixed;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 14px;
+    z-index: 1000002;
+    display: none;
+    pointer-events: none;
+  `;
+
   document.body.appendChild(overlay);
   document.body.appendChild(selectionBox);
   document.body.appendChild(instructions);
+  document.body.appendChild(dimensionDisplay);
 
   let startX, startY;
   let isSelecting = false;
@@ -79,6 +95,12 @@
     selectionBox.style.top = top + 'px';
     selectionBox.style.width = width + 'px';
     selectionBox.style.height = height + 'px';
+
+    // Update dimension display
+    dimensionDisplay.textContent = `${width} × ${height}px`;
+    dimensionDisplay.style.display = 'block';
+    dimensionDisplay.style.left = (currentX + 15) + 'px';
+    dimensionDisplay.style.top = (currentY + 15) + 'px';
   });
 
   overlay.addEventListener('mouseup', async (e) => {
@@ -94,10 +116,28 @@
     const left = Math.min(currentX, startX);
     const top = Math.min(currentY, startY);
 
-    // Minimum size check
-    if (width < 50 || height < 50) {
+    // Minimum size check - allow very small selections (at least 10x10)
+    if (width < 10 || height < 10) {
       cleanup();
-      alert('Selection too small. Please select a larger area.');
+      const errorDiv = document.createElement('div');
+      errorDiv.style.cssText = `
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: #ff4444;
+        color: white;
+        padding: 20px 40px;
+        border-radius: 8px;
+        font-family: 'Poppins', sans-serif;
+        font-size: 16px;
+        font-weight: 600;
+        z-index: 1000002;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+      `;
+      errorDiv.textContent = 'Selection too small (minimum 10×10px). Please select a larger area.';
+      document.body.appendChild(errorDiv);
+      setTimeout(() => errorDiv.remove(), 3000);
       return;
     }
 
@@ -244,5 +284,6 @@
     overlay.remove();
     selectionBox.remove();
     instructions.remove();
+    dimensionDisplay.remove();
   }
 })();

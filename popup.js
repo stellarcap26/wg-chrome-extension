@@ -157,7 +157,10 @@ async function captureScreenshot() {
       return;
     }
 
-    showStatus('Click and drag to select an area to capture...', 'info');
+    showStatus('Preparing screenshot capture...', 'info');
+
+    // Wait a moment to ensure page is stable
+    await new Promise(resolve => setTimeout(resolve, 300));
 
     // Inject screenshot selector
     await chrome.scripting.executeScript({
