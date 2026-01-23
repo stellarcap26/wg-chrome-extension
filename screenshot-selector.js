@@ -113,7 +113,7 @@
         height: height
       };
 
-      // Set a timeout for the response
+      // Set a timeout for the response (15 seconds to allow for processing)
       let responseReceived = false;
       const timeoutId = setTimeout(() => {
         if (!responseReceived) {
@@ -135,11 +135,11 @@
             z-index: 1000002;
             box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
           `;
-          errorDiv.textContent = 'Screenshot capture timed out. Please try again.';
+          errorDiv.innerHTML = 'Screenshot capture timed out.<br><small style="font-size: 14px; font-weight: 400;">The page may be loading slowly. Please reload the extension and try again.</small>';
           document.body.appendChild(errorDiv);
-          setTimeout(() => errorDiv.remove(), 3000);
+          setTimeout(() => errorDiv.remove(), 4000);
         }
-      }, 5000);
+      }, 15000);
 
       // Send message to background script to capture
       chrome.runtime.sendMessage({

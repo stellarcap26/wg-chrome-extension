@@ -1,7 +1,9 @@
 // Background service worker for Website Generator extension
 
-// Installation handler
+// Installation handler - consolidated to avoid duplicate listeners
 chrome.runtime.onInstalled.addListener((details) => {
+  console.log('Website Generator extension:', details.reason);
+
   if (details.reason === 'install') {
     console.log('Website Generator extension installed');
 
@@ -15,10 +17,8 @@ chrome.runtime.onInstalled.addListener((details) => {
   } else if (details.reason === 'update') {
     console.log('Website Generator extension updated');
   }
-});
 
-// Context menu creation (right-click menu)
-chrome.runtime.onInstalled.addListener(() => {
+  // Create context menus (for both install and update)
   // Create context menu for entire site
   chrome.contextMenus.create({
     id: 'generateFromSite',
@@ -111,9 +111,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 /**
- * Handle screenshot capture
+ * Handle screenshot capture with timeout
  */
 async function handleScreenshotCapture(rect, tab) {
+  const CAPTURE_TIMEOUT = 10000; // 10 seconds timeout
+
   try {
     // Check if the URL is restricted
     if (!tab || !tab.url) {
@@ -127,12 +129,23 @@ async function handleScreenshotCapture(rect, tab) {
       throw new Error('Cannot capture screenshots on browser internal pages. Please navigate to a regular website.');
     }
 
-    // Capture the visible tab
-    const screenshot = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    console.log('Starting screenshot capture for tab:', tab.id);
+
+    // Create a promise that will timeout
+    const capturePromise = chrome.tabs.captureVisibleTab(null, { format: 'png' });
+
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Screenshot capture timed out after 10 seconds')), CAPTURE_TIMEOUT);
+    });
+
+    // Race between capture and timeout
+    const screenshot = await Promise.race([capturePromise, timeoutPromise]);
 
     if (!screenshot) {
-      throw new Error('Failed to capture screenshot');
+      throw new Error('Failed to capture screenshot - no data returned');
     }
+
+    console.log('Screenshot captured successfully, storing...');
 
     // Store the screenshot and area info
     await chrome.storage.local.set({
@@ -140,6 +153,8 @@ async function handleScreenshotCapture(rect, tab) {
       screenshotRect: rect,
       timestamp: Date.now()
     });
+
+    console.log('Screenshot stored successfully');
 
     // Show success notification to user
     await chrome.notifications.create({
@@ -156,21 +171,35 @@ async function handleScreenshotCapture(rect, tab) {
 
   } catch (error) {
     console.error('Screenshot capture error:', error);
-    // Show error notification to user
+
+    // Show error notification to user with more specific message
+    let errorMessage = error.message || 'Failed to capture screenshot. Please try again on a regular website.';
+
+    // Add helpful context for common errors
+    if (error.message && error.message.includes('timeout')) {
+      errorMessage = 'Screenshot capture timed out. The page may be loading slowly. Please wait for the page to fully load and try again.';
+    } else if (error.message && error.message.includes('Cannot access')) {
+      errorMessage = 'Cannot capture this page. Try a different website.';
+    }
+
     await chrome.notifications.create({
       type: 'basic',
       iconUrl: 'icons/icon48.png',
       title: 'Screenshot Capture Failed',
-      message: error.message || 'Failed to capture screenshot. Please try again on a regular website.',
+      message: errorMessage,
       priority: 2
     });
+
     throw error;
   }
 }
 
 // Handle keyboard shortcuts (if defined in manifest)
-chrome.commands.onCommand.addListener((command) => {
-  if (command === 'quick-generate') {
-    chrome.action.openPopup();
-  }
-});
+// Only set up listener if commands API is available
+if (chrome.commands && chrome.commands.onCommand) {
+  chrome.commands.onCommand.addListener((command) => {
+    if (command === 'quick-generate') {
+      chrome.action.openPopup();
+    }
+  });
+}
