@@ -140,8 +140,6 @@ async function extractMultiPageContent() {
  */
 async function captureScreenshot() {
   try {
-    showStatus('Click and drag to select an area to capture...', 'info');
-
     // Get current tab
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
@@ -149,6 +147,17 @@ async function captureScreenshot() {
       showStatus('Could not access current tab', 'error');
       return;
     }
+
+    // Check if the URL is restricted
+    const restrictedProtocols = ['chrome:', 'chrome-extension:', 'edge:', 'about:', 'data:'];
+    const isRestricted = restrictedProtocols.some(protocol => tab.url.startsWith(protocol));
+
+    if (isRestricted) {
+      showStatus('Cannot capture screenshots on browser internal pages. Please navigate to a regular website.', 'error');
+      return;
+    }
+
+    showStatus('Click and drag to select an area to capture...', 'info');
 
     // Inject screenshot selector
     await chrome.scripting.executeScript({
@@ -568,6 +577,97 @@ function showStatus(message, type = 'info') {
 }
 
 /**
+ * Process stored screenshot and generate prompt
+ */
+async function processStoredScreenshot() {
+  try {
+    const data = await chrome.storage.local.get(['screenshot', 'screenshotRect', 'timestamp']);
+
+    if (!data.screenshot) {
+      return; // No screenshot stored
+    }
+
+    // Check if screenshot is recent (within last 5 minutes)
+    const now = Date.now();
+    if (!data.timestamp || (now - data.timestamp) > 300000) {
+      // Screenshot is too old, clear it
+      await chrome.storage.local.remove(['screenshot', 'screenshotRect', 'timestamp']);
+      await chrome.action.setBadgeText({ text: '' });
+      return;
+    }
+
+    // Clear the stored screenshot so it doesn't load again
+    await chrome.storage.local.remove(['screenshot', 'screenshotRect', 'timestamp']);
+
+    // Clear the badge
+    await chrome.action.setBadgeText({ text: '' });
+
+    showStatus('Processing screenshot...', 'info');
+
+    // Generate prompt for screenshot
+    let prompt = 'Create a website that EXACTLY matches the provided screenshot.\n\n';
+    prompt += 'CRITICAL REQUIREMENTS:\n\n';
+    prompt += 'Visual Design:\n';
+    prompt += '- Replicate the EXACT layout shown in the screenshot down to pixel-perfect precision\n';
+    prompt += '- Match all colors, gradients, and color schemes precisely\n';
+    prompt += '- Use the same typography, font sizes, and text hierarchy\n';
+    prompt += '- Recreate all visual effects: shadows, borders, rounded corners, overlays\n';
+    prompt += '- Match spacing, padding, and margins exactly as shown\n';
+    prompt += '- Implement any animations or transitions visible in the screenshot\n\n';
+
+    prompt += 'Components & Elements:\n';
+    prompt += '- Include every section, component, and UI element from the screenshot\n';
+    prompt += '- Recreate all buttons with exact styling (colors, shapes, hover states)\n';
+    prompt += '- Implement all navigation elements (menus, dropdowns, breadcrumbs)\n';
+    prompt += '- Add all form fields with proper styling and validation\n';
+    prompt += '- Include all cards, panels, and content containers\n';
+    prompt += '- Replicate any icons, badges, or decorative elements\n\n';
+
+    prompt += 'Images & Media:\n';
+    prompt += '- Use placeholder images that match the dimensions shown\n';
+    prompt += '- Maintain the same aspect ratios and image treatments\n';
+    prompt += '- Include any background images or patterns\n';
+    prompt += '- Add video placeholders if videos are shown in the screenshot\n\n';
+
+    prompt += 'Responsiveness:\n';
+    prompt += '- Make the design fully responsive and mobile-friendly\n';
+    prompt += '- Ensure the layout adapts gracefully to different screen sizes\n';
+    prompt += '- Maintain the design integrity on tablets and mobile devices\n\n';
+
+    prompt += 'Interactivity:\n';
+    prompt += '- Implement any interactive elements visible (sliders, accordions, tabs)\n';
+    prompt += '- Add appropriate hover effects on clickable elements\n';
+    prompt += '- Ensure smooth transitions and animations\n';
+    prompt += '- Make all buttons and links functional\n\n';
+
+    prompt += 'Performance:\n';
+    prompt += '- Optimize all assets for fast loading\n';
+    prompt += '- Use modern web best practices\n';
+    prompt += '- Ensure cross-browser compatibility\n';
+    prompt += '- Follow accessibility guidelines\n\n';
+
+    prompt += 'Content:\n';
+    prompt += '- Use readable placeholder text where text is not clearly visible\n';
+    prompt += '- Maintain content hierarchy and organization from the screenshot\n';
+    prompt += '- Preserve the tone and messaging style\n\n';
+
+    prompt += 'Note: This website is based on a screenshot captured by the user. ';
+    prompt += 'The goal is to create a pixel-perfect recreation that matches the visual design exactly.\n';
+
+    currentPrompt = prompt;
+    currentExtractedData = { type: 'screenshot', imageData: data.screenshot };
+
+    // Show preview
+    promptPreview.textContent = prompt;
+    previewDiv.classList.remove('hidden');
+    statusDiv.classList.add('hidden');
+
+  } catch (error) {
+    console.error('Error processing screenshot:', error);
+  }
+}
+
+/**
  * Initialize popup
  */
 document.addEventListener('DOMContentLoaded', () => {
@@ -595,4 +695,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
   });
+
+  // Check for stored screenshot from capture flow
+  processStoredScreenshot();
 });

@@ -113,18 +113,115 @@
         height: height
       };
 
+      // Set a timeout for the response
+      let responseReceived = false;
+      const timeoutId = setTimeout(() => {
+        if (!responseReceived) {
+          cleanup();
+          // Show a temporary message
+          const errorDiv = document.createElement('div');
+          errorDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #ff4444;
+            color: white;
+            padding: 20px 40px;
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            z-index: 1000002;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+          `;
+          errorDiv.textContent = 'Screenshot capture timed out. Please try again.';
+          document.body.appendChild(errorDiv);
+          setTimeout(() => errorDiv.remove(), 3000);
+        }
+      }, 5000);
+
       // Send message to background script to capture
       chrome.runtime.sendMessage({
         action: 'captureScreenshot',
         rect: rect
       }, (response) => {
+        responseReceived = true;
+        clearTimeout(timeoutId);
+
+        // Check for chrome.runtime.lastError
+        if (chrome.runtime.lastError) {
+          cleanup();
+          console.error('Screenshot message error:', chrome.runtime.lastError);
+          // Show error message
+          const errorDiv = document.createElement('div');
+          errorDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #ff4444;
+            color: white;
+            padding: 20px 40px;
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            z-index: 1000002;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+          `;
+          errorDiv.textContent = 'Failed to capture screenshot: ' + chrome.runtime.lastError.message;
+          document.body.appendChild(errorDiv);
+          setTimeout(() => errorDiv.remove(), 3000);
+          return;
+        }
+
         cleanup();
 
         if (response && response.success) {
           // Screenshot captured successfully
-          // The background script will handle opening the popup with the screenshot
+          // Show success message
+          const successDiv = document.createElement('div');
+          successDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #5048C7;
+            color: white;
+            padding: 20px 40px;
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            z-index: 1000002;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+          `;
+          successDiv.innerHTML = 'Screenshot captured!<br><small style="font-size: 14px; font-weight: 400;">Click the extension icon to continue</small>';
+          document.body.appendChild(successDiv);
+          setTimeout(() => successDiv.remove(), 3000);
         } else {
-          alert('Failed to capture screenshot. Please try again.');
+          const errorMsg = response?.error || 'Unknown error';
+          // Show error message
+          const errorDiv = document.createElement('div');
+          errorDiv.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #ff4444;
+            color: white;
+            padding: 20px 40px;
+            border-radius: 8px;
+            font-family: 'Poppins', sans-serif;
+            font-size: 16px;
+            font-weight: 600;
+            z-index: 1000002;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+          `;
+          errorDiv.textContent = 'Failed to capture screenshot: ' + errorMsg;
+          document.body.appendChild(errorDiv);
+          setTimeout(() => errorDiv.remove(), 3000);
         }
       });
 
