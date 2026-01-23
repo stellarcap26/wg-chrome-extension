@@ -35,6 +35,17 @@
       <div id="pasteArea" class="paste-area hidden">
         <p>📋 Paste your image here (Ctrl+V / Cmd+V)</p>
       </div>
+      <div id="mockupTypeSelector" class="mockup-type-selector hidden">
+        <p><strong>What does this mockup show?</strong></p>
+        <label class="radio-option">
+          <input type="radio" name="mockupType" value="full" checked>
+          <span>Full Website - Complete page layout</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="mockupType" value="section">
+          <span>Section/Component - Just a part of a page</span>
+        </label>
+      </div>
     </div>
 
     <div class="advanced-options">
@@ -61,6 +72,18 @@
             <input type="checkbox" id="enhancePrompt" checked>
             AI-enhance prompt
           </label>
+        </div>
+      </details>
+      <details>
+        <summary>⚙️ API Settings</summary>
+        <div class="advanced-content">
+          <label for="apiKey">Claude API Key:</label>
+          <input type="password" id="apiKey" placeholder="sk-ant-...">
+          <button id="saveApiKey" class="secondary-btn">Save API Key</button>
+          <small style="display: block; margin-top: 8px; color: #666;">
+            Required for mockup analysis. Get your key from
+            <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a>
+          </small>
         </div>
       </details>
     </div>

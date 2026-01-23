@@ -8,6 +8,7 @@ const extractPageBtn = document.getElementById('extractPage');
 const uploadImageBtn = document.getElementById('uploadImage');
 const imageInput = document.getElementById('imageInput');
 const pasteArea = document.getElementById('pasteArea');
+const mockupTypeSelector = document.getElementById('mockupTypeSelector');
 
 const statusDiv = document.getElementById('status');
 const previewDiv = document.getElementById('preview');
@@ -21,6 +22,10 @@ const editBtn = document.getElementById('editBtn');
 const saveEditBtn = document.getElementById('saveEditBtn');
 const cancelEditBtn = document.getElementById('cancelEditBtn');
 
+// API Settings
+const apiKeyInput = document.getElementById('apiKey');
+const saveApiKeyBtn = document.getElementById('saveApiKey');
+
 // Advanced options
 const includeStylesCheckbox = document.getElementById('includeStyles');
 const includeImagesCheckbox = document.getElementById('includeImages');
@@ -33,6 +38,7 @@ extractPageBtn.addEventListener('click', () => extractMultiPageContent());
 uploadImageBtn.addEventListener('click', () => {
   imageInput.click();
   pasteArea.classList.remove('hidden');
+  mockupTypeSelector.classList.remove('hidden');
 });
 imageInput.addEventListener('change', handleImageUpload);
 
@@ -47,6 +53,7 @@ copyBtn.addEventListener('click', copyPrompt);
 editBtn.addEventListener('click', showEditMode);
 saveEditBtn.addEventListener('click', saveEdit);
 cancelEditBtn.addEventListener('click', hideEditMode);
+saveApiKeyBtn.addEventListener('click', saveApiKey);
 
 /**
  * Extract content from multiple pages (up to 5)
@@ -155,12 +162,256 @@ async function handlePaste(event) {
     if (items[i].type.indexOf('image') !== -1) {
       event.preventDefault();
       const blob = items[i].getAsFile();
-      processImageFile(blob);
       pasteArea.classList.add('hidden');
-      showStatus('🎉 Image pasted! Creating your prompt...', 'info');
+      mockupTypeSelector.classList.remove('hidden');
+      showStatus('🎉 Image pasted! Analyzing...', 'info');
+      processImageFile(blob);
       break;
     }
   }
+}
+
+/**
+ * Analyze image using Claude Vision API
+ */
+async function analyzeImageWithClaude(imageData, mockupType) {
+  // Get API key from storage
+  const storage = await chrome.storage.sync.get(['claudeApiKey']);
+  const apiKey = storage.claudeApiKey;
+
+  if (!apiKey) {
+    throw new Error('Please configure your Claude API key in the API Settings section first');
+  }
+
+  // Create the analysis prompt based on mockup type
+  const analysisPrompt = mockupType === 'full'
+    ? createFullWebsiteAnalysisPrompt()
+    : createSectionAnalysisPrompt();
+
+  // Extract base64 data from data URL
+  const base64Data = imageData.split(',')[1];
+  const mediaType = imageData.split(';')[0].split(':')[1];
+
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 4000,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType,
+                  data: base64Data
+                }
+              },
+              {
+                type: 'text',
+                text: analysisPrompt
+              }
+            ]
+          }
+        ]
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error?.message || `API request failed with status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.content[0].text;
+
+  } catch (error) {
+    console.error('Claude API error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create analysis prompt for full website mockups
+ */
+function createFullWebsiteAnalysisPrompt() {
+  return `You are analyzing a website mockup/screenshot for recreation in B12's website builder. Provide a HIGHLY DETAILED description that will be used to recreate this website. B12 can only work with text prompts, NOT images, so your description must be comprehensive and precise.
+
+Analyze and describe the following in great detail:
+
+1. OVERALL LAYOUT & STRUCTURE:
+   - Page layout type (single page, multi-section landing page, etc.)
+   - Header structure (logo position, navigation layout, fixed/sticky or static)
+   - Main content organization (number of sections, their order)
+   - Footer structure and content
+   - Overall grid/column system used
+
+2. DESIGN STYLE & AESTHETIC:
+   - Design style (modern, minimalist, corporate, creative, elegant, etc.)
+   - Visual mood and tone
+   - Use of whitespace and breathing room
+   - Overall visual hierarchy
+   - Design patterns or trends being used
+
+3. COLOR SCHEME:
+   - Primary colors (list specific hex codes if discernible)
+   - Secondary/accent colors
+   - Background colors and gradients
+   - Text colors (headings vs body)
+   - Button and link colors
+   - Color usage patterns and combinations
+
+4. TYPOGRAPHY:
+   - Heading font characteristics (serif, sans-serif, weight, style)
+   - Body text font characteristics
+   - Font sizes hierarchy (H1, H2, H3, body text)
+   - Letter spacing, line height if notable
+   - Text alignment patterns
+
+5. HERO/HEADER SECTION:
+   - Layout (full-width, contained, split-screen, etc.)
+   - Primary headline text and style
+   - Subheadline or supporting text
+   - Call-to-action buttons (text, style, position)
+   - Background treatment (solid color, gradient, image, video)
+   - Any imagery or graphics
+
+6. CONTENT SECTIONS (for each major section):
+   - Section purpose/type (features, testimonials, pricing, about, etc.)
+   - Layout pattern (grid, single column, alternating, cards, etc.)
+   - Heading and description text
+   - Number of items/cards/columns
+   - Icons, images, or graphics used
+   - Background and styling
+
+7. COMPONENTS & UI ELEMENTS:
+   - Button styles (rounded, sharp, outlined, filled, shadows, etc.)
+   - Card designs (borders, shadows, hover effects)
+   - Form fields styling (if present)
+   - Navigation menu style and items
+   - Icons (style, size, usage)
+   - Dividers or separators
+   - Any unique UI patterns
+
+8. IMAGERY & MEDIA:
+   - Hero images or background images
+   - Product/feature images
+   - Image aspect ratios and sizing
+   - Image treatments (rounded corners, shadows, overlays)
+   - Placeholder suggestions for image content
+   - Video elements if present
+
+9. SPACING & RHYTHM:
+   - Section padding (generous, tight, balanced)
+   - Element spacing within sections
+   - Consistent spacing patterns
+   - Margins and gutters
+
+10. SPECIAL FEATURES:
+    - Animations or motion hints (parallax, fade-ins, etc.)
+    - Interactive elements (dropdowns, accordions, tabs)
+    - Carousels or sliders
+    - Social proof elements (reviews, logos, stats)
+    - Trust indicators (badges, certifications)
+
+11. RESPONSIVE CONSIDERATIONS:
+    - How the layout might adapt to mobile
+    - Suggested responsive behavior
+
+Provide your analysis in a clear, structured format that can be directly used as a prompt for website creation. Be specific about measurements when possible (e.g., "3-column grid", "50% width", "large padding"). Focus on what you can observe and describe precisely.`;
+}
+
+/**
+ * Create analysis prompt for section/component mockups
+ */
+function createSectionAnalysisPrompt() {
+  return `You are analyzing a website section or component mockup for recreation in B12's website builder. This is NOT a full page, but rather a specific section or UI component. Provide a HIGHLY DETAILED description that will be used to recreate this section. B12 can only work with text prompts, NOT images, so your description must be comprehensive and precise.
+
+Analyze and describe the following in great detail:
+
+1. SECTION TYPE & PURPOSE:
+   - What type of section is this? (hero, features, testimonials, pricing, CTA, about, team, contact, etc.)
+   - What is its primary purpose?
+   - Where would this typically appear on a page?
+
+2. LAYOUT & STRUCTURE:
+   - Overall layout pattern (single column, multi-column, grid, split-screen, etc.)
+   - Number of columns/items
+   - Content hierarchy and organization
+   - Alignment (left, center, right, justified)
+   - Container width (full-width, contained, specific proportions)
+
+3. DESIGN STYLE:
+   - Visual style (modern, minimalist, corporate, playful, elegant, etc.)
+   - Design patterns being used
+   - Level of visual complexity
+   - Amount of whitespace
+
+4. COLOR SCHEME:
+   - Background color or gradient
+   - Primary text colors
+   - Accent colors for highlights/CTAs
+   - Border or divider colors
+   - Specific hex codes if discernible
+
+5. TYPOGRAPHY:
+   - Heading text (actual text if readable, or placeholder)
+   - Heading style (size, weight, font characteristics)
+   - Body text style
+   - Text hierarchy within the section
+   - Any special text treatments
+
+6. CONTENT ELEMENTS:
+   - All text content (headings, subheadings, paragraphs, lists)
+   - Number of content items/cards
+   - Content length and format
+   - Key messages being conveyed
+
+7. UI COMPONENTS:
+   - Buttons (count, text, style, size, colors, rounded corners, etc.)
+   - Cards or containers (design, shadows, borders, spacing)
+   - Icons (style, size, color, purpose)
+   - Forms or input fields (if present)
+   - Images or graphics (describe in detail)
+   - Badges, tags, or labels
+
+8. IMAGERY & MEDIA:
+   - Any images present (count, size, aspect ratio, content type)
+   - Image treatments (rounded corners, shadows, borders, overlays)
+   - Icons or illustrations
+   - Suggested placeholder content
+   - Background images or patterns
+
+9. SPACING & MEASUREMENTS:
+   - Internal padding within the section
+   - Spacing between elements
+   - Gap between columns/items
+   - Margin considerations
+   - Relative sizes (e.g., "image takes up 40% of section")
+
+10. SPECIAL FEATURES:
+    - Interactive elements (hover states, clickable areas)
+    - Visual effects (shadows, gradients, overlays)
+    - Unique design treatments
+    - Animation suggestions
+    - Special decorative elements
+
+11. TECHNICAL DETAILS:
+    - Border radius on rounded elements
+    - Shadow types and intensity
+    - Gradients (direction, colors)
+    - Transparency/opacity usage
+    - Any overlays or layering
+
+Provide your analysis in a clear, structured format that can be used as a prompt to recreate just this section. Be specific about all visual details. Since this is a section (not a full page), focus on how this section should look and function as a standalone component.`;
 }
 
 /**
@@ -173,70 +424,94 @@ async function processImageFile(file) {
   }
 
   try {
-    showStatus('✨ Processing your masterpiece...', 'info');
+    showStatus('✨ Processing your image...', 'info');
 
     // Read image as data URL
     const reader = new FileReader();
     reader.onload = async (e) => {
       const imageData = e.target.result;
 
-      // Create prompt for mockup/screenshot
-      let prompt = '🎨 Create a website that EXACTLY matches the provided mockup/screenshot.\n\n';
-      prompt += 'CRITICAL REQUIREMENTS:\n\n';
-      prompt += 'Visual Design:\n';
-      prompt += '- Replicate the EXACT layout shown in the mockup down to pixel-perfect precision\n';
-      prompt += '- Match all colors, gradients, and color schemes precisely\n';
-      prompt += '- Use the same typography, font sizes, and text hierarchy\n';
-      prompt += '- Recreate all visual effects: shadows, borders, rounded corners, overlays\n';
-      prompt += '- Match spacing, padding, and margins exactly as shown\n';
-      prompt += '- Implement any animations or transitions visible in the mockup\n\n';
+      try {
+        // Get selected mockup type
+        const mockupTypeRadios = document.getElementsByName('mockupType');
+        let mockupType = 'full';
+        for (const radio of mockupTypeRadios) {
+          if (radio.checked) {
+            mockupType = radio.value;
+            break;
+          }
+        }
 
-      prompt += 'Components & Elements:\n';
-      prompt += '- Include every section, component, and UI element from the mockup\n';
-      prompt += '- Recreate all buttons with exact styling (colors, shapes, hover states)\n';
-      prompt += '- Implement all navigation elements (menus, dropdowns, breadcrumbs)\n';
-      prompt += '- Add all form fields with proper styling and validation\n';
-      prompt += '- Include all cards, panels, and content containers\n';
-      prompt += '- Replicate any icons, badges, or decorative elements\n\n';
+        // Analyze image with Claude
+        showStatus('🔍 Analyzing your mockup with AI... this may take a moment', 'info');
+        const analysis = await analyzeImageWithClaude(imageData, mockupType);
 
-      prompt += 'Images & Media:\n';
-      prompt += '- Use placeholder images that match the dimensions shown\n';
-      prompt += '- Maintain the same aspect ratios and image treatments\n';
-      prompt += '- Include any background images or patterns\n';
-      prompt += '- Add video placeholders if videos are shown in the mockup\n\n';
+        // Generate prompt based on analysis and mockup type
+        let prompt = '';
+        if (mockupType === 'full') {
+          prompt = `🌐 Create a complete website based on this detailed mockup analysis:\n\n`;
+          prompt += `${analysis}\n\n`;
+          prompt += `CRITICAL IMPLEMENTATION REQUIREMENTS:\n\n`;
+          prompt += `Visual Fidelity:\n`;
+          prompt += `- Recreate the design exactly as described above\n`;
+          prompt += `- Match all colors, typography, and spacing precisely\n`;
+          prompt += `- Implement all visual effects (shadows, gradients, rounded corners)\n`;
+          prompt += `- Maintain the exact layout structure and component placement\n\n`;
+          prompt += `Functionality:\n`;
+          prompt += `- Make all interactive elements functional (buttons, forms, navigation)\n`;
+          prompt += `- Implement smooth transitions and hover effects\n`;
+          prompt += `- Ensure all sections are properly linked and navigable\n`;
+          prompt += `- Add appropriate animations as described\n\n`;
+          prompt += `Responsiveness:\n`;
+          prompt += `- Make the design fully responsive and mobile-friendly\n`;
+          prompt += `- Ensure the layout adapts gracefully to all screen sizes\n`;
+          prompt += `- Maintain visual integrity across devices\n\n`;
+          prompt += `Content & Assets:\n`;
+          prompt += `- Use appropriate placeholder images that match the described dimensions and style\n`;
+          prompt += `- Ensure all text is readable and properly formatted\n`;
+          prompt += `- Include all icons, graphics, and visual elements as described\n\n`;
+        } else {
+          prompt = `🎨 Create this specific website section/component based on this detailed analysis:\n\n`;
+          prompt += `${analysis}\n\n`;
+          prompt += `CRITICAL IMPLEMENTATION REQUIREMENTS:\n\n`;
+          prompt += `Exact Recreation:\n`;
+          prompt += `- Build this as a standalone section that can be integrated into a website\n`;
+          prompt += `- Match all visual details exactly as described (colors, fonts, spacing, shadows)\n`;
+          prompt += `- Recreate the exact layout and component structure\n`;
+          prompt += `- Implement all UI elements with precise styling\n\n`;
+          prompt += `Components:\n`;
+          prompt += `- Create all buttons, cards, icons, and elements as described\n`;
+          prompt += `- Apply exact styling to each component (borders, shadows, colors)\n`;
+          prompt += `- Ensure proper spacing and alignment\n`;
+          prompt += `- Make all interactive elements functional\n\n`;
+          prompt += `Content:\n`;
+          prompt += `- Use the exact text content if specified in the analysis\n`;
+          prompt += `- Match the content hierarchy and formatting\n`;
+          prompt += `- Include placeholder images as described\n\n`;
+          prompt += `Responsiveness:\n`;
+          prompt += `- Make this section responsive and mobile-friendly\n`;
+          prompt += `- Ensure it works well at all screen sizes\n`;
+          prompt += `- Maintain the design integrity when scaled\n\n`;
+        }
 
-      prompt += 'Responsiveness:\n';
-      prompt += '- Make the design fully responsive and mobile-friendly\n';
-      prompt += '- Ensure the layout adapts gracefully to different screen sizes\n';
-      prompt += '- Maintain the design integrity on tablets and mobile devices\n\n';
+        prompt += `Quality Standards:\n`;
+        prompt += `- Use modern web best practices and clean code\n`;
+        prompt += `- Optimize for performance and fast loading\n`;
+        prompt += `- Follow accessibility guidelines (WCAG)\n`;
+        prompt += `- Ensure cross-browser compatibility\n`;
 
-      prompt += 'Interactivity:\n';
-      prompt += '- Implement any interactive elements visible (sliders, accordions, tabs)\n';
-      prompt += '- Add appropriate hover effects on clickable elements\n';
-      prompt += '- Ensure smooth transitions and animations\n';
-      prompt += '- Make all buttons and links functional\n\n';
+        currentPrompt = prompt;
+        currentExtractedData = { type: 'image', imageData, mockupType, analysis };
 
-      prompt += 'Performance:\n';
-      prompt += '- Optimize all assets for fast loading\n';
-      prompt += '- Use modern web best practices\n';
-      prompt += '- Ensure cross-browser compatibility\n';
-      prompt += '- Follow accessibility guidelines\n\n';
+        // Show preview
+        promptPreview.textContent = prompt;
+        previewDiv.classList.remove('hidden');
+        statusDiv.classList.add('hidden');
 
-      prompt += 'Content:\n';
-      prompt += '- Use readable placeholder text where text is not clearly visible\n';
-      prompt += '- Maintain content hierarchy and organization from the mockup\n';
-      prompt += '- Preserve the tone and messaging style\n\n';
-
-      prompt += '✨ Note: This website is based on a design mockup/screenshot. ';
-      prompt += 'The goal is to create a pixel-perfect recreation that matches the visual design exactly.\n';
-
-      currentPrompt = prompt;
-      currentExtractedData = { type: 'image', imageData };
-
-      // Show preview
-      promptPreview.textContent = prompt;
-      previewDiv.classList.remove('hidden');
-      statusDiv.classList.add('hidden');
+      } catch (error) {
+        console.error('Analysis error:', error);
+        showStatus('❌ Error analyzing image: ' + error.message, 'error');
+      }
     };
 
     reader.readAsDataURL(file);
@@ -672,22 +947,55 @@ function showStatus(message, type = 'info') {
 }
 
 /**
+ * Save API key to storage
+ */
+async function saveApiKey() {
+  const apiKey = apiKeyInput.value.trim();
+
+  if (!apiKey) {
+    showStatus('Please enter an API key', 'error');
+    return;
+  }
+
+  if (!apiKey.startsWith('sk-ant-')) {
+    showStatus('Invalid API key format. Should start with sk-ant-', 'error');
+    return;
+  }
+
+  try {
+    await chrome.storage.sync.set({ claudeApiKey: apiKey });
+    showStatus('API key saved successfully!', 'success');
+    setTimeout(() => {
+      statusDiv.classList.add('hidden');
+    }, 2000);
+  } catch (error) {
+    showStatus('Failed to save API key: ' + error.message, 'error');
+  }
+}
+
+/**
  * Initialize popup
  */
 document.addEventListener('DOMContentLoaded', () => {
-  // Load saved options
+  // Load saved options and API key
   chrome.storage.sync.get({
     includeStyles: true,
     includeImages: true,
     includeLayout: true,
     showFullContent: true,
-    enhancePrompt: true
+    enhancePrompt: true,
+    claudeApiKey: ''
   }, (items) => {
     includeStylesCheckbox.checked = items.includeStyles;
     includeImagesCheckbox.checked = items.includeImages;
     includeLayoutCheckbox.checked = items.includeLayout;
     showFullContentCheckbox.checked = items.showFullContent;
     enhancePromptCheckbox.checked = items.enhancePrompt;
+
+    // Load API key
+    if (items.claudeApiKey) {
+      apiKeyInput.value = items.claudeApiKey;
+    }
   });
 
   // Save options when changed
